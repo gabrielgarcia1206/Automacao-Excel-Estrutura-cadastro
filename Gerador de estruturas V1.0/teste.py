@@ -1,6 +1,6 @@
 import pandas as pd
 print("\n")
-print("🔧 GERADOR DE ESTRUTURA — CORRIGIDO (SEM LOOP DUPLICADO)\n")
+print("🔧 GERADOR DE ESTRUTURA — %PERDA SOMENTE EM ITENS FÍSICOS\n")
 
 # === CONFIGURAÇÕES ===
 arquivo = "dados.xlsx"
@@ -27,13 +27,20 @@ QTD = "QTD"
 MATERIAL = "MATERIAL"
 PESO = "PESO"
 JA_CAD = "JÁ CADASTRADOS" if "JÁ CADASTRADOS" in df.columns else "JA CADASTRADOS"
+PERDA = "%PERDA" if "%PERDA" in df.columns else "PERDA"
 OP1 = "OPERAÇÃO1" if "OPERAÇÃO1" in df.columns else ("OPERAÇÃO 1" if "OPERAÇÃO 1" in df.columns else "0")
 OP2 = "OPERAÇÃO 2" if "OPERAÇÃO 2" in df.columns else "0"
 OP3 = "OPERAÇÃO 3" if "OPERAÇÃO 3" in df.columns else "0"
 
+# coerção
 df[NIVEL] = pd.to_numeric(df[NIVEL], errors="coerce").fillna(0).astype(int)
 df[QTD] = pd.to_numeric(df[QTD], errors="coerce").fillna(0)
 df[PESO] = pd.to_numeric(df[PESO], errors="coerce").fillna(0)
+
+# adiciona coluna de perda se não existir
+if PERDA not in df.columns:
+    df[PERDA] = 0
+df[PERDA] = pd.to_numeric(df[PERDA], errors="coerce").fillna(0)
 
 
 def nao_cadastrado(v: str) -> bool:
@@ -60,7 +67,6 @@ def gerar_estrutura(df: pd.DataFrame) -> pd.DataFrame:
     saida = []
     linhas = set()
     pais_processados = set()
-
     total_linhas = len(df)
     i = 0
 
@@ -72,11 +78,11 @@ def gerar_estrutura(df: pd.DataFrame) -> pd.DataFrame:
         letra = str(row[LETRA]).strip().upper()
         material = str(row[MATERIAL]).strip().upper()
         peso = float(row[PESO])
+        perda = float(row[PERDA]) if PERDA in df.columns else 0
         ja_val = str(row.get(JA_CAD, "0")).strip().upper()
+        op1 = str(row.get(OP1, "0")).strip().upper()
 
-        # Só processa pais não cadastrados
         if nao_cadastrado(ja_val):
-            # Garante que não processe o mesmo pai novamente
             if codigo not in pais_processados:
                 pais_processados.add(codigo)
 
@@ -85,30 +91,29 @@ def gerar_estrutura(df: pd.DataFrame) -> pd.DataFrame:
                 while j < total_linhas:
                     prox = df.iloc[j]
                     nv = int(prox[NIVEL])
-
                     if nv <= nivel:
-                        break  # encerra hierarquia do pai
+                        break
                     if nv == nivel + 1:
                         filho = str(prox[COD_LETRA]).strip()
                         qtd_f = float(prox[QTD])
+                        perda_final = perda if op1 == "CC" else 0
                         if (codigo, filho) not in linhas:
-                            saida.append([codigo, filho, qtd_f, 0])
+                            saida.append([codigo, filho, qtd_f, perda_final])
                             linhas.add((codigo, filho))
                     j += 1
 
                 # --- Matéria-prima ---
                 if material != "0" and peso > 0:
+                    perda_final = perda if op1 == "CC" else 0
                     if (codigo, material) not in linhas:
-                        saida.append([codigo, material, peso, 0])
+                        saida.append([codigo, material, peso, perda_final])
                         linhas.add((codigo, material))
 
-                # --- MODs ---
+                # --- MODs (SEM %PERDA) ---
                 for mod in mods_do_item(row):
                     if (codigo, mod) not in linhas:
-                        saida.append([codigo, mod, 1, 0])
+                        saida.append([codigo, mod, 1, 0])  # 🔹 perda = 0 sempre nas MODs
                         linhas.add((codigo, mod))
-
-        # avança para próxima linha
         i += 1
 
     return pd.DataFrame(saida, columns=["Código", "Componente", "Quantidade", "%Perda"])
@@ -116,11 +121,8 @@ def gerar_estrutura(df: pd.DataFrame) -> pd.DataFrame:
 
 resultado = gerar_estrutura(df)
 resultado.to_excel(saida, index=False)
-print("\n")
-print("\n✅ Estrutura final gerada com sucesso.")
+
+print("\n✅ Estrutura final gerada com sucesso (sem %Perda nas MODs).")
 print("Arquivo salvo como:", saida)
 print("Total de linhas:", len(resultado))
-print("\n")
-print("\n")
-print("\n Dev by:Gabriel Bueno Garcia.")
-print("\n")
+print("\nDev by: Gabriel Bueno Garcia.\n")
